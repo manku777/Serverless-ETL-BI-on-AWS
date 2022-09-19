@@ -7,6 +7,7 @@
 
 
 1. END POINTS are used to connect to RDS instance remotely, so make a note of it. So go to my SQL workbench or anything and click in "New Database Connection". End point shoudl be the host name while connecting, port will be 3306, also provide username and password. 
+2. AWS Crawlers are used to connect to our datasources which can be csv, parquet etc and extracts the schema from it and populates the data catalog with the metadata from this file. In other term, it scan the sources, creates the table in DATA CATALOG which can be queried from Athena  
 
 
 ## How to load data from LOCAL TO RDS
@@ -73,7 +74,29 @@ S3 to staging area -> Delete records from final area by matching -> Load data fr
 ## AWS Lambda Function to trigger our Glue job
 - Above, we were manually running the incremental job in AWS Glue which is not feasible, so I created a lamda function(trigger_orders_hourly.py) which will trigger Glue job as soon as data loads into the S3 bucket from the AWS Data pipeline which runs on hourly basis.
 - Used boto 3 and used 'Glue' as a cliet and provided job name(which we create in Glue). Also created new IAM role and attached policy - AWSLambdaExecute and AWSGlueConsoleFullAccess
-- 
+
+## AWS Glue Crawler Setup
+-  We're going to use this for 
+ * Synced transactional data with Redshify
+ * Data enrichment and data centralisation
+- Create a S3 bucket(dwh_external_data) and create folder(user_behavior) in it and upload the 2016_funnel.csv
+- Once we have file partitioned by 'year' & 'month' and uploaded in the S3 bucket in parquet format, we will again create the crawler and extract the parquet file and will compare with the csv created earlier in Athena   
+ 
+## Pyspark Development Local
+- Here we create a Pspark script which will extract the data from the S3(funnel.csv), apply transformation to the funnel data and will save them as parquet file format. Will also apply compression and partitioning to the data and store in Local. After that we will be uploading it in the cloud and create Glue job
+- Extract the 'year' and 'month' from the eventtimestamp column and created two new columns i.e. year and month respectively and done partition on it
+
+## AWS Lambda to Trigger Glue jobs
+- Create AWS Lambda function which will take the name of the file(2016_funnel) and will do tranformation for that only. Provide the argument name in pyspark script as well(argument name in lamda function and pyspark job should be same). This will help in reducing the redundancy, for example applying transformation to same file again and again. 
+
+## Redshift spectrum (Data centralization - Centralize data stored in Athen(funnel) into Redshift(transactional))
+- For this we will create external schema in Redshift from the schema stored in data catalog (Athena). Database name in catalog newly created schema should be same.
+- It will move the table from Athena to Redshift so that we can join and do transformation etc
+
+
+## Visualization 
+- Connect redshift cluster(order table under mysql_dwh) with the quicksight 
+
 
 
 
@@ -87,11 +110,16 @@ S3 to staging area -> Delete records from final area by matching -> Load data fr
 - 
 
 
-## Questions
+## Questions/Challenges
 - Why not stored historical data in Redhshift directly? There are many issue while debugging if we stored directly to RS, that's why using S3
 - Why not done incremental copy of RDS MYSQL TO S3 in historical data dump? Because of the sync issue
+- The funnel data file column 'timestamp' was in string format, so converted into timestamp in local(Jupyter). Extracted the 'year' and 'month from the eventtimestamp column and created two new columns i.e. year and month respectively and done partition on both columns
+- Initally when I used crawler to load data from S3 bucket to data catalog in csv format and ran query using Athena, there was performance issue and was slow and same(same execution time) because csv is flat file. 
+So to remove this performance issue and for partitioning, I created Glue Pyspark job which by:
+ * Read the csv file(funnel.csv) from our local system and will apply basic transformation in it and will store as parquet in local. Once we're sure and fine, we will create a AWS Glue Pyspark job and attached a pyspark script in it which will load the data to S3. After this we will use crawler to extract the schema of the parquet file and will load it into data catalog which can be queried using Athena. There is major performance diffence b/w the parquet file and csv i.e. flat file uploaded in the data catalog
 
-
+# Notes
+ * Redshift spectrum: Used for centralizing the data(we have user behavioral data which is in Athena and transactional on Redshift)
 
 
 
