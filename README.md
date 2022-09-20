@@ -102,6 +102,9 @@ S3 to staging area -> Delete records from final area by matching -> Load data fr
   *  Funnel data has "event_type" like remove_from_cart, add_to_cart, view etc.. and also has column product_id, user_id etc... so I joined this table with customer table and visualize particular customer is removing products from the cart, viewing but not buying etc...
 
 ## Redshift optimization technique and tuning
+- In order to optimize, we need to first create a schema becasue by default "pg_table_df" contains "pg_catalog" table. So for optmizing our data we need to create schema and insert all the values which we have in our redshift cluster. Steps for creating are mentioned below:
+  
+  Amazon Redshift -> Configurations -> Workload management -> Select default redshift and create new parameter group under search_path we have do add SCHEMA on which we need optimization and in turn it will add all the tables under this schema
 
 
 
@@ -114,6 +117,8 @@ S3 to staging area -> Delete records from final area by matching -> Load data fr
 
 
 ## Questions/Challenges
+- Challenge: How to maintain the updated data in redshift which of the last 3 month - creating the staging table and final table, performed mapping...
+- Challenge: I had to run glue job manually on hourly basis so that I can take data from S3 and load into Redshift. So to automate this was challenging but I did that by using the lambda function
 - Why not stored historical data in Redhshift directly? There are many issue while debugging if we stored directly to RS, that's why using S3
 - Why not done incremental copy of RDS MYSQL TO S3 in historical data dump? Because of the sync issue
 - The funnel data file column 'timestamp' was in string format, so converted into timestamp in local(Jupyter). Extracted the 'year' and 'month from the eventtimestamp column and created two new columns i.e. year and month respectively and done partition on both columns
@@ -133,7 +138,7 @@ So to remove this performance issue and for partitioning, I created Glue Pyspark
   INTO TABLE table_name FIELDS TERMINATED BY ','
   ENCLOSED BY '"' IGNORE 1 LINES;
   
-- Now I created two data pipeline to import the historical(one time) and last three months of data to S3 bucket in csv format. I create two folders i.e. historical and current in the S3 bucket which I will import it to Redshift(mysql_dwh.orders and mysql_historical_dwh). I joined customer and orders table on basis of common customerid.
+- Now I created two data pipeline to import the historical(one time) and last three months of data to S3 bucket in csv format. I create two folders i.e. historical and current in the S3 bucket which I will import it to Redshift(mysql_dwh.orders and mysql_dwh.historical). I joined customer and orders table on basis of common customerid.
 - For loading the data from S3 bucket to Redshift make sure you have create the table in Redshift with exact columns in sequence order as we have in our csv file resding under S3 bucket
     copy schema.tablename from 's3://mysql-dwh/orders/historical/orders.csv'                  
    iam_role: 'arn:aws:iam::432432432:role/sdfsdf'                           // can get from the iam role which we created for Redshift
@@ -152,17 +157,17 @@ S3 to staging area -> Delete records from final area by matching -> Load data fr
  * Used boto 3 and 'Glue' as a client and provided job name(which we create in AWS Glue). Also created new IAM role and attached policy - AWSLambdaExecute and AWSGlueConsoleFullAccess
  * How lambda function knows whether the S3 bucket has been updated? We add a trigger in lamda function while configuring. As soon as there is an event(All object create events), it will trigger lambda function, which in turn will trigger AWS Glue Python shell job.
 
-- Now we are dealing with funnel data. It is a type of data which is sent by third party like Amplitude where they analyze the user behaviour like adding to cart, buying, how frequently user is buying etc so that company can improve their service.
-So this funnel data is is stored in our S3 bucket in csv format
+- Now we are dealing with funnel data. It is a type of data which is sent by third party like Amplitude where they analyze the user behaviour like adding to cart, buying, how frequently user is buying etc so that company we can improve our service.
+So this funnel data is stored in our S3 bucket in csv format
 
-- Now we will create one folder(user_behaviour) in the S3 bucket and will store the funnel data csv file and will Crawler which will extract the schema and load it exactly in Data Catalog which can be queried using Athena. While quering the dumped csv file in data catalog and quering from Athena the execution time was long and same even if the query is short. So to remove this, I used Pyspark(I did everything in loca jupyter notebook and upload parquet file in AWS).
+- Now we will create one folder(user_behaviour) in the S3 bucket and will store the funnel data csv file and will Crawler which will extract the schema and load it exactly in Data Catalog which can be queried using Athena. While quering the dumped csv file in data catalog and quering from Athena the execution time was long and same even if the query is short. So to remove this, I used Pyspark(I did everything in local jupyter notebook and upload parquet file in AWS).
  * Note - We will be first do in local and then mimic the same in AWS Glue PySpark
  * Here we create a Pspark script which will extract the data from the S3(funnel.csv), apply transformation to the funnel data and will save them as parquet file format. Will also apply compression and partitioning to the data and store in Local. After that we will be mimicing the local script procedure and perform the same in AWS Glue PySpark which will read the data from the S3(2016_funnel.csv)uploading it in the S3 after transformation and created a crawler which will read the schema, in our case parquet file with partition and create the same in data catalog
  * Extract the 'year' and 'month' from the eventtimestamp column and created two new columns i.e. year and month respectively and done partition on it
 
  * WE HAVE MADE THE SCRIPT DYNAMIC(by applying logic in filename) WHICH MEANS IT WILL PERFORM ETL ON ALL THE FILE WHICH ARE PRESENT IN S3 INSTEAD OF HARDCODING IT IN THE SCRIPT AND AFTER ETL IT WILL STORE IT IN S3 BUCKET. Now we will create the crawler as we did earlier and will load the parition data into Data Catalog
 
-- Now we have USER BEHAVIOUR(FUNNEL DATA) in our ATHENA and transactional data in the REDSHIFT and we will be centralizing both of them with REDSHFIT SPECTRUM 
+- Now we have USER BEHAVIOUR(FUNNEL DATA) in our ATHENA and transactional data in the REDSHIFT and we will be centralizing both of them with REDSHFIT SPECTRUM by creating the external schema. By redshift we can pull the Athen table in redshift and join with the table which is in redshift and do visualization. 
 
 
 
